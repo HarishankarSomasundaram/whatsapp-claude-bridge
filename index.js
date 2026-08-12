@@ -14,6 +14,7 @@ const WORK_DIR = process.env.WORK_DIR || process.env.HOME || process.cwd();
 const TURN_TIMEOUT = Number(process.env.TURN_TIMEOUT_MS || 240000);
 const SHELL_TIMEOUT = Number(process.env.SHELL_TIMEOUT_MS || 300000);
 let defaultModel = process.env.CLAUDE_MODEL || "sonnet";
+const MAIN_MODEL = process.env.MAIN_MODEL || "opus"; // the @main orchestrator defaults to the strongest model
 const DEFAULT = "main";
 const AUTH = __dirname + "/auth";
 const QRPNG = __dirname + "/qr.png";
@@ -34,7 +35,7 @@ const sentIds = new Set();
 const sessions = new Map();
 function getSession(name){
   let s = sessions.get(name);
-  if (!s){ s = { name, model: defaultModel, cp: null, buf: "", turnResolve: null, turnText: "", turnTimer: null, chain: Promise.resolve() }; sessions.set(name, s); }
+  if (!s){ s = { name, model: (name === DEFAULT ? MAIN_MODEL : defaultModel), cp: null, buf: "", turnResolve: null, turnText: "", turnTimer: null, chain: Promise.resolve() }; sessions.set(name, s); }
   return s;
 }
 function finishTurn(s, text){ if (s.turnTimer){ clearTimeout(s.turnTimer); s.turnTimer = null; } const r = s.turnResolve; s.turnResolve = null; s.turnText = ""; if (r) r(text); }
@@ -101,7 +102,7 @@ const HELP = () => [
   "• agents — list them · stop <name> — end one · @<name> reset — fresh",
   "",
   "Instant (skip Claude): " + Object.keys(SHORTCUTS).join(" · ") + " · sh <cmd>",
-  "Model: use haiku|sonnet|opus (new agents) · @<name> use <model> · now: " + defaultModel,
+  "Model: @main=" + MAIN_MODEL + " (orchestrator) · new agents=" + defaultModel + " · use <model> / @<name> use <model>",
   "reset · help",
 ].join("\n");
 
