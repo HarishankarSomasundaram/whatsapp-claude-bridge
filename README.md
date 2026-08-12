@@ -61,8 +61,10 @@ See [`wa-bridge.service.example`](wa-bridge.service.example) for a systemd unit 
 | Variable | Default | Purpose |
 |---|---|---|
 | `WA_ALLOWED` | *(empty)* | Comma-separated sender IDs allowed to command the bot. **Required.** Empty = ignore everything. |
+| `BRIDGE_MODE` | `multi` | `multi` (parallel agent pool + coordinator) or `single` (one classic warm session). Toggle live with `mode single`/`mode multi`. |
 | `CLAUDE_BIN` | `claude` | Path to the Claude Code CLI (must be logged in). |
-| `CLAUDE_MODEL` | `sonnet` | `sonnet` (balanced) · `haiku` (fastest) · `opus` (most capable). |
+| `MAIN_MODEL` | `opus` | Model for the `@main` orchestrator (it delegates to cheaper sub-agents per task). |
+| `CLAUDE_MODEL` | `sonnet` | Default model for other named agents. `sonnet` · `haiku` · `opus`. |
 | `WORK_DIR` | `$HOME` | Working dir for Claude + shell. Put a `CLAUDE.md` here for standing instructions. |
 | `TURN_TIMEOUT_MS` | `240000` | Per-message Claude timeout; a stuck turn restarts the session instead of blocking. |
 | `SHELL_TIMEOUT_MS` | `300000` | Timeout for `sh`/shortcut commands. |
