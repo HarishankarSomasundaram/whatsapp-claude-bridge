@@ -142,7 +142,11 @@ async function handle(sock, jid, msg){
   if (bc) return broadcast(sock, jid, bc[1].trim());
   // global model default
   mm = msg.match(/^use\s+(haiku|sonnet|opus)$/i);
-  if (mm){ defaultModel = mm[1].toLowerCase(); return reply(sock, jid, "✅ default model → " + defaultModel + " (applies to new agents; use `@name use " + defaultModel + "` for an existing one)"); }
+  if (mm){
+    defaultModel = mm[1].toLowerCase();
+    if (!multi){ const s = getSession(DEFAULT); s.model = defaultModel; restartSession(s); return reply(sock, jid, "✅ model → " + defaultModel); }
+    return reply(sock, jid, "✅ default model → " + defaultModel + " (new agents; use `@name use " + defaultModel + "` for an existing one)");
+  }
   if (/^(reset|new|clear)$/i.test(msg)){ restartSession(getSession(DEFAULT)); return reply(sock, jid, "🔄 @main reset."); }
   if (/^confirm$/i.test(msg)){
     if (pending && (Date.now()-pendingAt) < 120000){ const c = pending; pending = null; await reply(sock, jid, "▶ " + c); return shell(c, o => reply(sock, jid, o)); }
