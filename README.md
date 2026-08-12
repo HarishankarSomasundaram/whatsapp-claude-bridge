@@ -4,6 +4,8 @@ Drive **Claude Code** (or a plain shell) on your own machine from **WhatsApp**. 
 
 Self-hosted, no cloud middleman, no API key: it links a spare WhatsApp account with [Baileys](https://github.com/WhiskeySockets/Baileys) and pipes messages into the Claude Code CLI using **your existing Claude login**.
 
+![architecture](docs/architecture.png)
+
 ---
 
 ## ⚠️ Security — read this first
