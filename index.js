@@ -15,6 +15,7 @@ const TURN_TIMEOUT = Number(process.env.TURN_TIMEOUT_MS || 240000);
 const SHELL_TIMEOUT = Number(process.env.SHELL_TIMEOUT_MS || 300000);
 let defaultModel = process.env.CLAUDE_MODEL || "sonnet";
 const MAIN_MODEL = process.env.MAIN_MODEL || "opus"; // the @main orchestrator defaults to the strongest model
+let MODE = (process.env.BRIDGE_MODE || "multi").toLowerCase(); // "multi" (agent pool) | "single" (classic one warm session)
 const DEFAULT = "main";
 const AUTH = __dirname + "/auth";
 const QRPNG = __dirname + "/qr.png";
@@ -35,7 +36,7 @@ const sentIds = new Set();
 const sessions = new Map();
 function getSession(name){
   let s = sessions.get(name);
-  if (!s){ s = { name, model: (name === DEFAULT ? MAIN_MODEL : defaultModel), cp: null, buf: "", turnResolve: null, turnText: "", turnTimer: null, chain: Promise.resolve() }; sessions.set(name, s); }
+  if (!s){ const im = (name === DEFAULT) ? (MODE === "multi" ? MAIN_MODEL : defaultModel) : defaultModel; s = { name, model: im, cp: null, buf: "", turnResolve: null, turnText: "", turnTimer: null, chain: Promise.resolve() }; sessions.set(name, s); }
   return s;
 }
 function finishTurn(s, text){ if (s.turnTimer){ clearTimeout(s.turnTimer); s.turnTimer = null; } const r = s.turnResolve; s.turnResolve = null; s.turnText = ""; if (r) r(text); }
@@ -92,19 +93,24 @@ function listAgents(){
   if (!sessions.size) return "no agents yet — start one with `@build <task>`";
   return "agents:\n" + [...sessions.values()].map(s => "• @" + s.name + " (" + s.model + ") " + (s.cp ? (s.turnResolve ? "working" : "idle") : "stopped")).join("\n");
 }
-const HELP = () => [
-  "🤖 Remote Claude — multi-agent",
-  "Talk in plain English → the `main` agent (runs tools, fans out subagents, remembers context).",
-  "",
-  "Multiple agents (run in parallel):",
-  "• @<name> <task>  — send to a named agent (created on first use), e.g. `@build fix the test`",
-  "• @all <task>  (or `broadcast <task>`) — fan one task across ALL active agents, then merge",
-  "• agents — list them · stop <name> — end one · @<name> reset — fresh",
-  "",
-  "Instant (skip Claude): " + Object.keys(SHORTCUTS).join(" · ") + " · sh <cmd>",
-  "Model: @main=" + MAIN_MODEL + " (orchestrator) · new agents=" + defaultModel + " · use <model> / @<name> use <model>",
-  "reset · help",
-].join("\n");
+const HELP = () => {
+  const base = [
+    "Instant (skip Claude): " + Object.keys(SHORTCUTS).join(" · ") + " · sh <cmd>",
+    "reset · mode (single|multi) · help",
+  ];
+  if (MODE !== "multi") return ["🤖 Remote Claude — single-session (classic)",
+    "Talk in plain English → one warm agent with memory.",
+    "Model: use haiku|sonnet|opus (now " + defaultModel + ")", "", ...base].join("\n");
+  return ["🤖 Remote Claude — multi-agent",
+    "Plain English → the `main` orchestrator (runs tools, delegates sub-agents, remembers context).",
+    "",
+    "Agents (parallel):",
+    "• @<name> <task> — a named agent (created on first use)",
+    "• @all <task> / broadcast <task> — fan across all agents, then merge",
+    "• agents · stop <name> · @<name> reset",
+    "Model: @main=" + MAIN_MODEL + " · new agents=" + defaultModel + " · use <model> / @<name> use <model>",
+    "", ...base].join("\n");
+};
 
 async function broadcast(sock, jid, instruction){
   const names = [...sessions.keys()].filter(n => n !== "coordinator" && sessions.get(n).cp);
@@ -120,10 +126,19 @@ async function broadcast(sock, jid, instruction){
 
 async function handle(sock, jid, msg){
   if (/^(help|commands)$/i.test(msg)) return reply(sock, jid, HELP());
-  if (/^agents$|^sessions$/i.test(msg)) return reply(sock, jid, listAgents());
-  let mm = msg.match(/^stop\s+@?([a-z0-9_-]{1,24})$/i);
+  const mo = msg.match(/^mode(?:\s+(single|multi))?$/i);
+  if (mo){
+    if (!mo[1]) return reply(sock, jid, "architecture: " + MODE + "  (send `mode single` or `mode multi`)");
+    MODE = mo[1].toLowerCase();
+    for (const s of sessions.values()) restartSession(s);
+    if (MODE === "single") for (const k of [...sessions.keys()]) if (k !== DEFAULT) sessions.delete(k);
+    return reply(sock, jid, "✅ architecture → " + (MODE === "single" ? "single-session (classic)" : "multi-agent") + " — sessions reset.");
+  }
+  const multi = (MODE === "multi");
+  if (multi && /^agents$|^sessions$/i.test(msg)) return reply(sock, jid, listAgents());
+  let mm = multi && msg.match(/^stop\s+@?([a-z0-9_-]{1,24})$/i);
   if (mm){ const s = sessions.get(mm[1].toLowerCase()); if (s){ restartSession(s); sessions.delete(mm[1].toLowerCase()); return reply(sock, jid, "🛑 stopped @" + mm[1].toLowerCase()); } return reply(sock, jid, "no such agent"); }
-  let bc = msg.match(/^(?:@all|broadcast)\s+([\s\S]+)$/i);
+  let bc = multi && msg.match(/^(?:@all|broadcast)\s+([\s\S]+)$/i);
   if (bc) return broadcast(sock, jid, bc[1].trim());
   // global model default
   mm = msg.match(/^use\s+(haiku|sonnet|opus)$/i);
@@ -139,10 +154,9 @@ async function handle(sock, jid, msg){
     return shell(cmd, o => reply(sock, jid, o));
   }
   if (SHORTCUTS[msg.toLowerCase().trim()]) return shell(SHORTCUTS[msg.toLowerCase().trim()], o => reply(sock, jid, o));
-  // targeted agent?  "@name <body>"
+  // targeted agent?  "@name <body>"  (multi mode only)
   let target = DEFAULT, body = msg;
-  const at = msg.match(/^@([a-z0-9_-]{1,24})\s+([\s\S]+)$/i);
-  if (at){ target = at[1].toLowerCase(); body = at[2].trim(); }
+  if (multi){ const at = msg.match(/^@([a-z0-9_-]{1,24})\s+([\s\S]+)$/i); if (at){ target = at[1].toLowerCase(); body = at[2].trim(); } }
   // per-agent control words
   if (/^reset$/i.test(body)){ restartSession(getSession(target)); return reply(sock, jid, "🔄 @" + target + " reset."); }
   const um = body.match(/^use\s+(haiku|sonnet|opus)$/i);

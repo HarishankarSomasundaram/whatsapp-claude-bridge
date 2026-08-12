@@ -80,6 +80,7 @@ See [`wa-bridge.service.example`](wa-bridge.service.example) for a systemd unit 
 | `sh <cmd>` | Raw shell command, instant (skips Claude) |
 | `gpu` · `disk` · `mem` · `uptime` | Instant shortcuts (edit `SHORTCUTS` in `index.js`) |
 | `CONFIRM` | Approve a pending destructive shell command |
+| `mode` · `mode single` · `mode multi` | Show / switch architecture (multi-agent ↔ classic single session) |
 | `help` | Command list |
 
 ## Troubleshooting
