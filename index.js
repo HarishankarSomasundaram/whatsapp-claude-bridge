@@ -131,8 +131,8 @@ async function handle(sock, jid, msg){
     if (!mo[1]) return reply(sock, jid, "architecture: " + MODE + "  (send `mode single` or `mode multi`)");
     MODE = mo[1].toLowerCase();
     for (const s of sessions.values()) restartSession(s);
-    if (MODE === "single") for (const k of [...sessions.keys()]) if (k !== DEFAULT) sessions.delete(k);
-    return reply(sock, jid, "✅ architecture → " + (MODE === "single" ? "single-session (classic)" : "multi-agent") + " — sessions reset.");
+    sessions.clear();
+    return reply(sock, jid, "✅ architecture → " + (MODE === "single" ? "single-session (classic, " + defaultModel + ")" : "multi-agent (@main=" + MAIN_MODEL + ")") + " — sessions reset.");
   }
   const multi = (MODE === "multi");
   if (multi && /^agents$|^sessions$/i.test(msg)) return reply(sock, jid, listAgents());
@@ -162,7 +162,8 @@ async function handle(sock, jid, msg){
   const um = body.match(/^use\s+(haiku|sonnet|opus)$/i);
   if (um){ const s = getSession(target); s.model = um[1].toLowerCase(); restartSession(s); return reply(sock, jid, "✅ @" + target + " → " + s.model); }
   // dispatch (non-blocking so other agents run in parallel)
-  await reply(sock, jid, "🤖 @" + target + " on it… (" + getSession(target).model + ")");
+  const _tag = (multi && target !== DEFAULT) ? ("@" + target + " ") : "";
+  await reply(sock, jid, "🤖 " + _tag + "on it… (" + getSession(target).model + ")");
   ask(target, body).then(out => reply(sock, jid, (target === DEFAULT ? "" : "@" + target + ":\n") + out));
 }
 
